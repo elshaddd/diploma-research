@@ -1,0 +1,99 @@
+archiver_url: "http://archiver-app:8000"
+metadata_db_url: "http://metadata-app:8000"
+redis_url: "redis://redis:6379"
+
+# Метаданные эксперимента
+experiment:
+  schema_name: "benchmark_v1"
+  label: "benchmark"
+  file_configuration: "multi_sensor_stub"
+
+# Сервисы-воркеры.
+#
+# Каждая модальность обрабатывается своим воркером (N модальностей = N воркеров).
+# Частоты дискретизации намеренно различаются, что соответствует реальным
+# условиям психофизиологического эксперимента и позволяет исследовать
+# корректность алгоритма ресемплинга и объединения разночастотных рядов.
+# Число сенсорных колонок фиксировано (8) для всех сервисов, чтобы размер
+# файла не являлся скрытой переменной при исследовании зависимости T(N).
+services:
+  - name: gaze
+    endpoint: /process-gaze
+    file_field: video
+    csv_type: gaze-video
+    sampling_freq_hz: 100
+    columns: [x, y, pupil_left, pupil_right, blink, fixation_x, fixation_y, fixation_dur]
+
+  - name: emotions
+    endpoint: /process-emotions
+    file_field: video
+    csv_type: emotions-video
+    sampling_freq_hz: 30
+    columns: [anger, fear, happy, sad, surprise, disgust, neutral, valence]
+
+  - name: sound
+    endpoint: /process-sound
+    file_field: sound
+    csv_type: sound
+    sampling_freq_hz: 256
+    columns: [amplitude, rms, zcr, spectral_centroid, spectral_bandwidth, mfcc1, mfcc2, mfcc3]
+
+  - name: cursor
+    endpoint: /process-cursor
+    file_field: files
+    csv_type: cursor
+    sampling_freq_hz: 120
+    columns: [x, y, click, scroll_x, scroll_y, drag, hover_dur, velocity]
+
+  - name: thermal-imager
+    endpoint: /process-thermal-imager
+    file_field: video
+    csv_type: thermal
+    sampling_freq_hz: 30
+    columns: [temp_mean, temp_max, temp_min, temp_std, roi_forehead, roi_nose, roi_cheek_l, roi_cheek_r]
+
+  - name: transcription
+    endpoint: /process-transcription
+    file_field: audio
+    csv_type: sound
+    sampling_freq_hz: 60
+    columns: [word_rate, pause_dur, pitch_mean, pitch_std, energy, voiced_ratio, sentiment, arousal]
+
+  - name: breathing
+    endpoint: /process-breathing
+    file_field: files
+    csv_type: breathing
+    sampling_freq_hz: 50
+    columns: [rr_rate, t_volume, pif_flow, pef_flow, ins_time, exp_time, min_vent, spo2]
+
+  - name: ecg
+    endpoint: /process-ecg
+    file_field: files
+    csv_type: ecg
+    sampling_freq_hz: 500
+    columns: [heart_rate, rr_interval, p_duration, pr_interval, qrs_duration, qt_interval, st_elevation, t_amplitude]
+
+# Параметры бенчмарка
+benchmark:
+  # Количество экспериментов в одной серии
+  num_experiments: 33
+
+  # Файлов в одном батче на сервис
+  # Один батч = один silver-файл модальности
+  batch_size: 2
+
+  # Длительность одной записи в секундах
+  # 420 с = 7 минут — типичный блок психофизиологического эксперимента
+  duration_seconds: 420
+
+  # Таймаут ожидания событий из Redis (секунды)
+  wait_timeout: 300
+
+# Параметры заглушки (stub_worker.py)
+stub_worker:
+  port: 8100
+  # Имитация задержки обработки (мс)
+  delay_ms: 0
+  # ARCHIVER_URL, куда заглушка отправляет silver-файлы
+  archiver_url: "http://archiver-app:8000"
+  

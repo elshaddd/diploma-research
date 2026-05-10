@@ -1,0 +1,95 @@
+services:
+  metadata-app:
+    build: ./metadata-service
+    env_file:
+      - ./metadata-service/.env
+    volumes:
+      - ./metadata-service/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/docs" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  distributor-app:
+    build: ./distributor-service
+    env_file: ./distributor-service/.env
+    volumes:
+      - ./distributor-service/data:/app/data
+      - ./global_data:/app/storage_lake
+    depends_on:
+      metadata-app:
+        condition: service_healthy
+
+  archiver-app:
+    build: ./archiver-service
+    env_file: ./archiver-service/.env
+    volumes:
+      - ./archiver-service/data:/app/data
+      - ./global_data:/app/storage_lake
+    depends_on:
+      metadata-app:
+        condition: service_healthy
+
+  worker-processing:
+    build: ./worker-processing-service
+    env_file: ./worker-processing-service/.env
+    volumes:
+      - ./worker-processing-service/data:/app/data
+
+  stub-worker:
+    build: ./benchmark
+    command: python stub_worker.py
+    ports:
+      - "${STUB_PORT:-8100}:${STUB_PORT:-8100}"
+    env_file:
+      - ./benchmark/.env
+    depends_on:
+      archiver-app:
+        condition: service_started
+
+  benchmark:
+    build: ./benchmark
+    command: echo "Ready."
+    volumes:
+      - ./benchmark/data:/app/data
+    env_file:
+      - ./benchmark/.env
+    depends_on:
+      metadata-app:
+        condition: service_healthy
+      archiver-app:
+        condition: service_started
+      stub-worker:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:13
+    env_file:
+      - ./metadata-service/.env
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
